@@ -1,0 +1,188 @@
+/*
+ * Control_ECU.c
+ *
+ *  Created on: Nov 1, 2024
+ *      Author: Moham
+ */
+
+
+#include "std_types.h"
+#include "external_eeprom.h"
+#include "twi.h"
+#include "uart.h"
+#include "PWM.h"
+#include "DC_Motor.h"
+#include "PIR.h"
+#include "Buzzer.h"
+#include "Timer.h"
+#include <util/delay.h>
+
+/***********************************
+ *       Definitions                                  *
+ **********************************/
+static volatile uint8 g_tick_number = 0;
+#define SLAVE_ADDRESS        1
+#define BIT_RATE             400000
+#define BAUD_RATE            9600
+#define CREATE_NEW_PASSWORD  0x01
+#define CHECK_OLD_PASSWORD  0x02
+#define PASSWORD_LENGTH      5
+#define synchronize          0xA0
+#define OPEN_DOOR           0x03
+#define CORRECT_PASSWORD    0x04
+#define WRONG_PASSWORD      0x05
+#define FOR_ONE_SECOND_COMPARE_VALUE 		31249
+#define TIMER_INITIAL_VALUE 				0
+#define PEOPLE_ENTERING     0x06
+#define NO_PEOPLE_ENTERING  0x07
+#define MAX_WRONG_ATTEMPT   3
+#define BUZZER_ON           0X08
+#define BUZZER_OFF          0X09
+#define CHANGE_OLD_PASSWORD 0x0A
+#define EEPROM_FIRST_ADDRESS  	0x0311
+/****************************
+ *    Functions Prototypes
+ ***************************/
+void Recive_Store_Password_In_EEPROM() ;
+uint8 Compare_Recived_Passwoed_OldPassword();
+void Door_Delay(void);
+void Buzzer_Delay(void);
+void countOneSecond(void);
+/************************************
+ *        main
+ ************************************/
+int main(){
+	/*initialization function */
+	uint8 state,check,door_opened=0,buzzer=0,password_changed=0;
+	SREG |= (1<<7);
+	UART_ConfigType uart_config = {UART_DATA_8_BITS,UART_NO_PARITY, UART_ONE_STOP_BIT,BAUD_RATE};
+	UART_init(&uart_config);
+	TWI_ConfigType twi_config =	{SLAVE_ADDRESS,BIT_RATE};
+	TWI_init(&twi_config);
+	PWM_Timer0_Start(0);
+	DcMotor_Init();
+	Buzzer_init();
+	PIR_init();
+	while(1)
+	{
+		state=UART_recieveByte();
+		if(state==CREATE_NEW_PASSWORD)
+		{
+			Recive_Store_Password_In_EEPROM();
+
+		}
+		else if(state==OPEN_DOOR)
+		{
+			while(door_opened==0 && buzzer==0){
+				check=Compare_Recived_Passwoed_OldPassword();
+				UART_sendByte(check);
+				if(check==CORRECT_PASSWORD){
+					DcMotor_Rotate(CW, 100);
+					Door_Delay();
+					while(1)
+					{
+						if(PIR_getValue())
+						{
+							UART_sendByte(PEOPLE_ENTERING);
+						}
+						else{
+							UART_sendByte(NO_PEOPLE_ENTERING);
+							break;
+						}
+					}
+					DcMotor_Rotate(A_CW, 100);
+					Door_Delay();
+					DcMotor_Rotate(stop, 0);
+					door_opened=1;
+				}
+				else{
+					if (UART_recieveByte() == BUZZER_ON) {
+						Buzzer_on();
+						Buzzer_Delay();
+						Buzzer_off();
+						buzzer=1;
+					}
+
+				}
+			}
+
+			door_opened=0;
+			buzzer=0;
+		}
+
+		else if(state==CHANGE_OLD_PASSWORD)
+		{
+			while(password_changed==0 && buzzer==0)
+			{
+				check=Compare_Recived_Passwoed_OldPassword();
+				UART_sendByte(check);
+				if(check==CORRECT_PASSWORD){
+					Recive_Store_Password_In_EEPROM();
+					password_changed=1;
+				}
+				else{
+					if (UART_recieveByte() == BUZZER_ON) {
+						Buzzer_on();
+						Buzzer_Delay();
+						Buzzer_off();
+						buzzer=1;
+					}
+
+				}
+
+			}
+			password_changed=0;
+			buzzer=0;
+		}
+	}
+}
+uint8 Compare_Recived_Passwoed_OldPassword()
+{
+	uint8 temp1, temp2,check=CORRECT_PASSWORD;
+	uint8 i = 0;
+	while (i < PASSWORD_LENGTH) {
+		UART_sendByte(synchronize);
+		temp1 = UART_recieveByte();
+		EEPROM_readByte(EEPROM_FIRST_ADDRESS + i, &temp2);
+		if (temp1 != temp2) {
+			check=WRONG_PASSWORD;
+		}
+		i++;
+	}
+
+	return check;
+}
+void Recive_Store_Password_In_EEPROM() {
+	uint8 i = 0;
+	uint8 temp;
+	while (i < PASSWORD_LENGTH) {
+		UART_sendByte(synchronize);
+		temp = UART_recieveByte();
+		EEPROM_writeByte(EEPROM_FIRST_ADDRESS + i, temp);
+		_delay_ms(10); /* delay for EEPROM*/
+		i++;
+	}
+}
+void Door_Delay(void)
+{
+	Timer_ConfigType timer_config = { TIMER_INITIAL_VALUE,FOR_ONE_SECOND_COMPARE_VALUE, TIMER1, F_CPU_div_256, CTC_MODE };
+	Timer_setCallBack(countOneSecond, TIMER1);
+	TIMER_init(&timer_config);
+	while (g_tick_number < 60);
+	g_tick_number = 0;
+	Timer_deInit(TIMER1);
+
+}
+void Buzzer_Delay(void)
+{
+	Timer_ConfigType timer_config = { TIMER_INITIAL_VALUE,FOR_ONE_SECOND_COMPARE_VALUE, TIMER1, F_CPU_div_256, CTC_MODE };
+	Timer_setCallBack(countOneSecond, TIMER1);
+	TIMER_init(&timer_config);
+	while (g_tick_number < 15);
+	g_tick_number = 0;
+	Timer_deInit(TIMER1);
+
+}
+void countOneSecond(void) {
+	g_tick_number++;/*called every 1 sec*/
+}

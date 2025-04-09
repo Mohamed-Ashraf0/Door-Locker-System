@@ -1,0 +1,13 @@
+/*
+ * GPIO_private.h
+ *
+ *  Created on: Nov 2, 2024
+ *      Author: Moham
+ */
+
+#ifndef GPIO_PRIVATE_H_
+#define GPIO_PRIVATE_H_
+
+
+
+#endif /* GPIO_PRIVATE_H_ */

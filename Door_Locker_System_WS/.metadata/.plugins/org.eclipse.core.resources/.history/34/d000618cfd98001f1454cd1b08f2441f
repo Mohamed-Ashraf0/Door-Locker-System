@@ -1,0 +1,238 @@
+/*
+ * Timer.c
+ *
+ *  Created on: Nov 1, 2024
+ *      Author: Moham
+ */
+#include "Timer.h"
+#include "avr/interrupt.h"
+
+/*********************************
+ *store the the call back function address
+ **********************************/
+static volatile void (*timer0_getcallBackPtr)(void) = NULL_PTR;
+static volatile void (*timer1_getcallBackPtr)(void) = NULL_PTR;
+static volatile void (*timer2_getcallBackPtr)(void) = NULL_PTR;
+
+static void Timer0_init(const Timer_ConfigType *Config_Ptr);
+static void Timer1_init(const Timer_ConfigType *Config_Ptr);
+static void Timer2_init(const Timer_ConfigType *Config_Ptr);
+static void Timer0_deInit(void);
+static void Timer1_deInit(void);
+static void Timer2_deInit(void);
+
+/*********************************
+ *Interrupt Service Routines
+ **********************************/
+
+ISR(TIMER0_OVF_vect)
+{
+	if(timer0_getcallBackPtr != NULL_PTR)
+	{
+		/* Call the Call Back function in the application*/
+		(*timer0_getcallBackPtr)();
+	}
+}
+
+ISR(TIMER0_COMP_vect)
+{
+	if(timer0_getcallBackPtr != NULL_PTR)
+	{
+		/* Call the Call Back function in the application*/
+		(*timer0_getcallBackPtr)();
+	}
+}
+
+ISR(TIMER1_OVF_vect)
+{
+	if(timer1_getcallBackPtr != NULL_PTR)
+	{
+		/* Call the Call Back function in the application*/
+		(*timer1_getcallBackPtr)();
+	}
+}
+
+ISR(TIMER1_COMPA_vect)
+{
+	if(timer1_getcallBackPtr != NULL_PTR)
+	{
+		/* Call the Call Back function in the application*/
+		(*timer1_getcallBackPtr)();
+	}
+}
+
+
+ISR(TIMER2_OVF_vect)
+{
+	if(timer2_getcallBackPtr != NULL_PTR)
+	{
+		/* Call the Call Back function in the application*/
+		(*timer2_getcallBackPtr)();
+	}
+}
+
+ISR(TIMER2_COMP_vect)
+{
+	if(timer2_getcallBackPtr != NULL_PTR)
+	{
+		/* Call the Call Back function in the application*/
+		(*timer2_getcallBackPtr)();
+	}
+}
+/*********************************
+ *           Functions
+ **********************************/
+void TIMER_init(const Timer_ConfigType * Config_Ptr){
+	switch (Config_Ptr->timer_ID) {
+	case TIMER0:
+		Timer0_init(Config_Ptr);
+		break;
+	case TIMER1:
+		Timer1_init(Config_Ptr);
+		break;
+	case TIMER2:
+		Timer2_init(Config_Ptr);
+		break;
+	}
+}
+void Timer_deInit(Timer_ID_Type timer_type) {
+	switch (timer_type) {
+	case TIMER0:
+		Timer0_deInit();
+		break;
+	case TIMER1:
+		Timer1_deInit();
+		break;
+	case TIMER2:
+		Timer2_deInit();
+		break;
+	}
+}
+void Timer_setCallBack(void (*ptr)(void), Timer_ID_Type timer_ID) {
+	switch (timer_ID) {
+	case TIMER0:
+		timer0_getcallBackPtr=ptr;
+		break;
+	case TIMER1:
+		timer1_getcallBackPtr=ptr;
+		break;
+	case TIMER2:
+		timer2_getcallBackPtr=ptr;
+		break;
+	}
+}
+
+static void Timer0_init(const Timer_ConfigType *Config_Ptr)
+{
+	/* non PWM Mode */
+	TCCR0 = (1<<FOC0);
+	/*set initial value */
+	TCNT0 = Config_Ptr->timer_InitialValue;
+	/* Set the prescaler*/
+	TCCR0 = (TCCR0 & 0XF8) | (Config_Ptr->timer_clock & 0X07);
+
+	if((Config_Ptr->timer_mode) == NORMAL_MODE){
+		/* Enable Timer0 overflow interrupt */
+		TIMSK |= (1 << TOIE0);
+	}
+	else if ( (Config_Ptr -> timer_mode) == CTC_MODE){
+		/*set compare value for compare mode*/
+		OCR0 = Config_Ptr->timer_compare_MatchValue;
+		/* Enable Timer0 compare interrupt */
+		TIMSK |= (1 << OCIE0);
+	}
+}
+
+static void Timer1_init(const Timer_ConfigType *Config_Ptr)
+{
+	/*  Non PWM Mode */
+	TCCR1A = (1 << FOC1A) | (1 << FOC1B) ;
+	/*set the initial value*/
+	TCNT1 = ( (Config_Ptr -> timer_InitialValue) );
+	/*add WGM10 and WGM11 of TCCR1A Register and WGM12 and WGM13 TCCR1B Register*/
+	if (Config_Ptr->timer_mode == NORMAL_MODE) {
+		TCCR1A&= ~(1<<WGM10) & ~(1<<WGM11) & ~(1<<WGM12)& ~(1<<WGM13);
+		TCCR1B&= ~(1<<WGM12)& ~(1<<WGM13);
+	} else if (Config_Ptr->timer_mode == CTC_MODE) {
+		TCCR1A&= ~(1<<WGM10) & ~(1<<WGM11);
+		TCCR1B&=~(1<<WGM13);
+		TCCR1B|=(1<<WGM12);
+	}
+	/*set pre scaler*/
+	TCCR1B = (TCCR1B&0xF8) | (Config_Ptr->timer_clock);
+	if( (Config_Ptr->timer_mode ) == NORMAL_MODE)
+	{
+		/* Enable interrupt FOR normal mode */
+		TIMSK |= (1 << TOIE1);
+	}
+	else if ((Config_Ptr->timer_mode) == CTC_MODE)
+	{
+		/*set compare value for compare mode channel A*/
+		OCR1A  = ((Config_Ptr->timer_compare_MatchValue));
+		/* Enable interrupt for compare mode channel A */
+		TIMSK |= (1 << OCIE1A);
+	}
+}
+
+static void Timer2_init(const Timer_ConfigType *Config_Ptr)
+{
+	/*set the initail value of the timer*/
+	TCNT2 = Config_Ptr->timer_InitialValue;
+	/*non PWM mode*/
+	TCCR2 = (1<<FOC2);
+	/* choose the timer clock (F_CPU / prescaler)*/
+	TCCR2 = (TCCR2 & 0XF8) | (Config_Ptr->timer_clock & 0X07);
+	/* Check which timer mode is chosen */
+	if( (Config_Ptr -> timer_mode ) == NORMAL_MODE) {
+		TCCR2&= ~(1<<WGM20) & ~(1<<WGM21);
+		/*	Enable interrupt for normal mode */
+		TIMSK |= (1 << TOIE2);
+	}
+	else if ( (Config_Ptr -> timer_mode) == CTC_MODE){
+		TCCR2&= ~(1<<WGM20);
+		TCCR2|=(1<<WGM21);
+		/*set the compare value of the compare mode timer*/
+		OCR2 = Config_Ptr->timer_compare_MatchValue;
+		/*	 Enable interrupt for compare mode */
+		TIMSK |= (1 << OCIE2);
+	}
+}
+
+static void Timer0_deInit()
+{
+	/* disable timer */
+	TCCR0 = 0;
+	/* clear timer */
+	TCNT1=0;
+	/*disable interrupt*/
+	TIMSK&=~(1<<TOIE0);
+	TIMSK&=~(1<<OCIE0);
+	/*remove get back function*/
+	timer0_getcallBackPtr=NULL_PTR;
+}
+
+static void Timer1_deInit(){
+	/* disable timer */
+	TCCR1A=0;
+	TCCR1B=0;
+	/* clear timer */
+	TCNT1=0;
+	OCR1A=0;
+	/*disable interrupt*/
+	TIMSK&=~(1<<TOIE1) & ~(1<<OCIE1A);
+	/*remove get back function*/
+	timer1_getcallBackPtr=NULL_PTR;
+}
+
+static void Timer2_deInit(){
+	/* disable timer */
+	TCCR2=0;
+	/* clear timer */
+	TCNT2=0;
+	OCR2=0;
+	/*disable interrupt*/
+	TIMSK&=~(1<<TOIE2) & ~(1<<OCIE2);
+	/*remove get back function*/
+	timer2_getcallBackPtr=NULL_PTR;
+
+}

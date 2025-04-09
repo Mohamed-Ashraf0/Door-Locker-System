@@ -1,0 +1,13 @@
+/*
+ * uart_private.h
+ *
+ *  Created on: Nov 2, 2024
+ *      Author: Moham
+ */
+
+#ifndef UART_PRIVATE_H_
+#define UART_PRIVATE_H_
+
+
+
+#endif /* UART_PRIVATE_H_ */

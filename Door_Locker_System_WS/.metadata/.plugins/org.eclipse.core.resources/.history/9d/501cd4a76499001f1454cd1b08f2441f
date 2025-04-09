@@ -1,0 +1,245 @@
+/*
+ * HMI_ECU.c
+ *
+ *  Created on: Nov 1, 2024
+ *      Author: Moham
+ */
+
+#include "std_types.h"
+#include "uart.h"
+#include "Keypad.h"
+#include "LCD.h"
+#include <util/delay.h>
+#include "Timer.h"
+#include<string.h>
+/***********************************
+ *       Definitions                                  *
+ **********************************/
+static volatile uint8 g_tick_number = 0;
+#define SLAVE_ADDRESS        1
+#define BIT_RATE             400000
+#define BAUD_RATE            9600
+#define CREATE_NEW_PASSWORD  0x01
+#define PASSWORD_LENGTH      5
+#define synchronize          0xA0
+#define CHECK_OLD_PASSWORD  0x02
+#define OPEN_DOOR           0x03
+#define CORRECT_PASSWORD    0x04
+#define WRONG_PASSWORD      0x05
+#define FOR_ONE_SECOND_COMPARE_VALUE 		31249
+#define TIMER_INITIAL_VALUE 				0
+#define PEOPLE_ENTERING     0x06
+#define NO_PEOPLE_ENTERING  0x07
+#define MAX_WRONG_ATTEMPT   3
+#define BUZZER_ON           0X08
+#define BUZZER_OFF          0X09
+#define CHANGE_OLD_PASSWORD 0x0A
+#define EEPROM_FIRST_ADDRESS  	0x0311
+/****************************
+ *    Functions Prototypes
+ ***************************/
+uint8 Password_Compare(uint8 password[], uint8 confirmPassword[]);
+void Read_Password(uint8 password[]);
+uint8 new_Password();
+void Send_Password(uint8 password[]);
+void Door_Delay(void);
+void Buzzer_Delay(void);
+void countOneSecond(void);
+/************************************
+ *        main
+ ************************************/
+int main(){
+	/*initialization function */
+	uint8 password_exist=0,password[PASSWORD_LENGTH],option=0,wrong_pass_attempt=0,check=0,people=0,door_opened=0,password_changed=0;
+	SREG |= (1<<7);
+	UART_ConfigType uart_config = {UART_DATA_8_BITS,UART_NO_PARITY, UART_ONE_STOP_BIT,BAUD_RATE};
+	UART_init(&uart_config);
+	LCD_init();
+	LCD_clearScreen();
+	LCD_displayString("Door Lock System");
+	_delay_ms(250);
+	LCD_clearScreen();
+
+	while(1)
+	{
+		UART_sendByte(CREATE_NEW_PASSWORD);
+		while(password_exist==0)
+		{
+			password_exist=new_Password();
+		}
+		LCD_clearScreen();
+		LCD_displayString("+ : Open Door");
+		LCD_moveCursor(1, 0);
+		LCD_displayString("- : Change Pass");
+			option = KEYPAD_getPressedKey();
+
+		if (option == '+') {
+			//UART_sendByte(CHECK_OLD_PASSWORD);
+			UART_sendByte(OPEN_DOOR);
+
+			while(door_opened==0 && wrong_pass_attempt<MAX_WRONG_ATTEMPT)
+			{
+
+				LCD_clearScreen();
+				LCD_displayString("plz enter pass:");
+				LCD_moveCursor(1, 0);
+				Read_Password(password);
+				Send_Password(password);
+				check=UART_recieveByte();
+				if(check == CORRECT_PASSWORD) {
+					wrong_pass_attempt=0;
+					LCD_clearScreen();
+					LCD_displayString("Door is Unlocking");
+					LCD_moveCursor(1, 0);
+					LCD_displayString("   Please wait   ");
+					Door_Delay();
+					LCD_clearScreen();
+					do{
+						people=UART_recieveByte();
+						if (people == PEOPLE_ENTERING) {
+							LCD_displayString(" wait for People");
+							LCD_moveCursor(1, 0);
+							LCD_displayString("   To Enter  ");
+							_delay_ms(500);
+
+						}
+					}while(people==PEOPLE_ENTERING);
+					LCD_clearScreen();
+					LCD_displayString("  Door is locking   ");
+					Door_Delay();
+					door_opened=1;
+				}
+				else if (check == WRONG_PASSWORD) {
+					wrong_pass_attempt++;
+					if (wrong_pass_attempt == MAX_WRONG_ATTEMPT) {
+						UART_sendByte(BUZZER_ON);
+						LCD_clearScreen();
+						LCD_displayString("  System LOCKED  ");
+						LCD_moveCursor(1, 0);
+						LCD_displayString("Wait for 1 min");
+						Buzzer_Delay();
+					} else {
+						UART_sendByte(BUZZER_OFF);
+					}
+				}
+			}
+			door_opened=0;
+			wrong_pass_attempt=0;
+		}
+
+		else if (option == '-') {
+			//UART_sendByte(CHECK_OLD_PASSWORD);
+			UART_sendByte(CHANGE_OLD_PASSWORD);
+			while(password_changed==0 && wrong_pass_attempt<MAX_WRONG_ATTEMPT)
+			{
+				LCD_clearScreen();
+				LCD_displayString("plz enter old");
+				LCD_moveCursor(1, 0);
+				LCD_displayString("pass : ");
+				Read_Password(password);
+				Send_Password(password);
+				check=UART_recieveByte();
+				if(check == CORRECT_PASSWORD) {
+					wrong_pass_attempt=0;
+					password_exist=0;
+					while(password_exist==0)
+					{
+						password_exist=new_Password();
+					}
+					password_changed=1;
+				}
+				else if (check == WRONG_PASSWORD) {
+					wrong_pass_attempt++;
+					if (wrong_pass_attempt == MAX_WRONG_ATTEMPT) {
+						UART_sendByte(BUZZER_ON);
+						LCD_clearScreen();
+						LCD_displayString("  System LOCKED  ");
+						LCD_moveCursor(1, 0);
+						LCD_displayString("Wait for 1 min");
+						Buzzer_Delay();
+					} else {
+						UART_sendByte(BUZZER_OFF);
+					}
+				}
+			}
+			wrong_pass_attempt=0;
+			password_changed=0;
+		}
+	}
+}
+	uint8 new_Password() {
+		uint8 Password_first_time[PASSWORD_LENGTH],Password_second_time[PASSWORD_LENGTH],flag;
+		LCD_clearScreen();
+		LCD_displayString("Plz Enter Pass:");
+		LCD_moveCursor(1, 0);
+		Read_Password(Password_first_time);
+		LCD_clearScreen();
+		LCD_displayString("Plz re-enter the");
+		LCD_moveCursor(1, 0);
+		LCD_displayString("same pass:");
+		Read_Password(Password_second_time);
+		LCD_clearScreen();
+		flag=Password_Compare(Password_first_time,Password_second_time);
+		if(flag)
+		{
+			Send_Password(Password_second_time);
+			_delay_ms(250);
+			return 1;
+		}
+		return 0;
+	}
+	uint8 Password_Compare(uint8 password[], uint8 confirmPassword[]) {
+		for (uint8 i = 0; i < PASSWORD_LENGTH; i++) {
+			if (password[i] != confirmPassword[i]) {
+				return 0;
+			}
+		}
+		return 1;
+	}
+	void Read_Password(uint8 password[]) {
+		uint8 i = 0;
+		uint8 temp;
+		while (i < PASSWORD_LENGTH) {
+			temp = KEYPAD_getPressedKey();
+			_delay_ms(250); /* Press time */
+			if (temp >= 0 && temp <= 9) {
+				password[i] = temp;
+				LCD_displayCharacter('*');
+				i++;
+			}
+		}
+		while (KEYPAD_getPressedKey() != '#');
+	}
+
+	void Send_Password(uint8 password[]) {
+		uint8 i = 0;
+		while (i < PASSWORD_LENGTH) {
+			while (UART_recieveByte() != synchronize);
+			UART_sendByte(password[i]);
+			i++;
+		}
+	}
+
+	void Door_Delay(void)
+	{
+		Timer_ConfigType timer_config = { TIMER_INITIAL_VALUE,FOR_ONE_SECOND_COMPARE_VALUE, TIMER1, F_CPU_div_256, CTC_MODE };
+		Timer_setCallBack(countOneSecond, TIMER1);
+		TIMER_init(&timer_config);
+		while (g_tick_number < 15);
+		g_tick_number = 0;
+		Timer_deInit(TIMER1);
+
+	}
+	void Buzzer_Delay(void)
+	{
+		Timer_ConfigType timer_config = { TIMER_INITIAL_VALUE,FOR_ONE_SECOND_COMPARE_VALUE, TIMER1, F_CPU_div_256, CTC_MODE };
+		Timer_setCallBack(countOneSecond, TIMER1);
+		TIMER_init(&timer_config);
+		while (g_tick_number < 60);
+		g_tick_number = 0;
+		Timer_deInit(TIMER1);
+
+	}
+	void countOneSecond(void) {
+		g_tick_number++;/*called every 1 sec*/
+	}
