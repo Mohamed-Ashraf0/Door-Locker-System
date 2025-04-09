@@ -42,7 +42,19 @@ The **Door Locker System** is a secure embedded application designed to control 
 - No additional libraries needed—fully built on low-level register control.
 
 ## 📂 Project Structure
+Application/: Contains the main application logic that controls the system behavior.
 
+ECUAL/: External Component Abstraction Layer — includes drivers for peripherals like the LCD, Keypad, and DC Motor.
+
+HAL/: Hardware Abstraction Layer — includes modules for external EEPROM and Timers.
+
+MCAL/: Microcontroller Abstraction Layer — low-level drivers for GPIO (DIO), UART, and I2C (TWI).
+
+main.c: The program’s entry point; initializes modules and starts the control loop.
+
+README.md: Project documentation and usage instructions.
+
+.gitignore: Lists files and folders ignored by Git (e.g., build artifacts, temporary files).
 
 ## 🧪 Usage
 
