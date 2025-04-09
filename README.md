@@ -41,21 +41,23 @@ The **Door Locker System** is a secure embedded application designed to control 
 - Code is written in **C for AVR** and compiled using **Atmel Studio**.
 - No additional libraries needed—fully built on low-level register control.
 
-## 📂 Project Structure
-Application/: Contains the main application logic that controls the system behavior.
+## 📁 Project Structure
 
-ECUAL/: External Component Abstraction Layer — includes drivers for peripherals like the LCD, Keypad, and DC Motor.
-
-HAL/: Hardware Abstraction Layer — includes modules for external EEPROM and Timers.
-
-MCAL/: Microcontroller Abstraction Layer — low-level drivers for GPIO (DIO), UART, and I2C (TWI).
-
-main.c: The program’s entry point; initializes modules and starts the control loop.
-
-README.md: Project documentation and usage instructions.
-
-.gitignore: Lists files and folders ignored by Git (e.g., build artifacts, temporary files).
-
+- `Application/` : Contains the main application logic that manages the door lock system.
+- `ECUAL/` : External Component Abstraction Layer – includes drivers for:
+  - `DC_Motor/` – Controls the locking/unlocking motor.
+  - `Keypad/` – Handles user input via a 4x4 keypad.
+  - `LCD/` – Manages the 16x2 LCD display for feedback.
+- `HAL/` : Hardware Abstraction Layer – includes:
+  - `EEPROM/` – Driver for external EEPROM to store/retrieve passwords.
+  - `Timer/` – Timer configurations for delays and alert timing.
+- `MCAL/` : Microcontroller Abstraction Layer – includes low-level drivers for:
+  - `DIO/` – Digital I/O pin control.
+  - `TWI/` – I2C communication protocol (used for EEPROM).
+  - `UART/` – Serial communication interface (optional/debugging).
+- `main.c` : Entry point of the system. Initializes modules and starts the main control loop.
+- `README.md` : Project documentation and usage instructions.
+- `.gitignore` : Specifies files and directories ignored by Git (e.g., build outputs, temp files).
 ## 🧪 Usage
 
 1. **Power on** the system.
